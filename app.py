@@ -102,8 +102,9 @@ with tab_pred:
         if predict_btn:
             start_t = time.perf_counter()
             
-            # Feature vector
-            X_input = np.array([[open_val, high_val, low_val, vol_val, ma5_val, ma20_val]])
+            # Feature vector with column names
+            feature_cols = ['Open', 'High', 'Low', 'Volume', 'MA_5', 'MA_20']
+            X_input = pd.DataFrame([[open_val, high_val, low_val, vol_val, ma5_val, ma20_val]], columns=feature_cols)
             X_scaled = scaler.transform(X_input)
             predicted_close = float(model.predict(X_scaled)[0])
             
