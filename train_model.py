@@ -8,9 +8,12 @@ import joblib
 import json
 import os
 
+# Import MLflow
+import mlflow
+import mlflow.sklearn
+
 def generate_synthetic_stock_data(n_days=500):
     np.random.seed(42)
-    # Generate realistic random walk for stock prices
     base_price = 150.0
     returns = np.random.normal(0.0008, 0.02, n_days)
     price_series = base_price * np.exp(np.cumsum(returns))
@@ -27,7 +30,6 @@ def generate_synthetic_stock_data(n_days=500):
         ma_5 = np.mean(price_series[i-5:i])
         ma_20 = np.mean(price_series[i-20:i])
         
-        # Target: next day close price
         if i + 1 < n_days:
             target_next_close = price_series[i+1]
         else:
@@ -48,6 +50,10 @@ def generate_synthetic_stock_data(n_days=500):
     return pd.DataFrame(data)
 
 def train_and_save():
+    # Set explicit tracking URI to this folder's mlruns
+    base_dir = os.path.dirname(os.path.abspath(__file__)).replace("\\", "/")
+    mlflow.set_tracking_uri(f"file:///{base_dir}/mlruns")
+    
     print("Generating training dataset...")
     df = generate_synthetic_stock_data(n_days=600)
     
@@ -60,36 +66,55 @@ def train_and_save():
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
-    
-    print("Training Random Forest Regressor...")
-    model = RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42)
-    model.fit(X_train_scaled, y_train)
-    
-    # Evaluate
-    preds = model.predict(X_test_scaled)
-    mae = mean_absolute_error(y_test, preds)
-    rmse = np.sqrt(mean_squared_error(y_test, preds))
-    r2 = r2_score(y_test, preds)
-    
-    print(f"Model Performance: MAE={mae:.2f}, RMSE={rmse:.2f}, R2={r2:.4f}")
-    
-    # Save artifacts
-    joblib.dump(model, 'stock_model.pkl')
-    joblib.dump(scaler, 'scaler.pkl')
-    
-    # Save sample recent history for charting in Streamlit
-    df.tail(60).to_csv('historical_sample.csv', index=False)
-    
-    metrics = {
-        'mae': round(mae, 2),
-        'rmse': round(rmse, 2),
-        'r2': round(r2, 4),
-        'feature_names': feature_cols
-    }
-    with open('metrics.json', 'w') as f:
-        json.dump(metrics, f, indent=2)
+
+    # Set MLflow Experiment
+    mlflow.set_experiment("Stock_Price_Prediction")
+
+    # Start MLflow Tracking Run
+    with mlflow.start_run(run_name="RandomForest_v1"):
+        n_estimators = 100
+        max_depth = 10
         
-    print("Artifacts saved: stock_model.pkl, scaler.pkl, historical_sample.csv, metrics.json")
+        # Log Hyperparameters
+        mlflow.log_param("n_estimators", n_estimators)
+        mlflow.log_param("max_depth", max_depth)
+        mlflow.log_param("model_type", "RandomForestRegressor")
+
+        print("Training Random Forest Regressor...")
+        model = RandomForestRegressor(n_estimators=n_estimators, max_depth=max_depth, random_state=42)
+        model.fit(X_train_scaled, y_train)
+        
+        # Evaluate
+        preds = model.predict(X_test_scaled)
+        mae = mean_absolute_error(y_test, preds)
+        rmse = np.sqrt(mean_squared_error(y_test, preds))
+        r2 = r2_score(y_test, preds)
+        
+        print(f"Model Performance: MAE={mae:.2f}, RMSE={rmse:.2f}, R2={r2:.4f}")
+        
+        # Log Metrics to MLflow
+        mlflow.log_metric("mae", mae)
+        mlflow.log_metric("rmse", rmse)
+        mlflow.log_metric("r2_score", r2)
+
+        # Log Model directly into MLflow
+        mlflow.sklearn.log_model(model, "model")
+
+        # Save local files for Streamlit
+        joblib.dump(model, os.path.join(base_dir, 'stock_model.pkl'))
+        joblib.dump(scaler, os.path.join(base_dir, 'scaler.pkl'))
+        df.tail(60).to_csv(os.path.join(base_dir, 'historical_sample.csv'), index=False)
+        
+        metrics = {
+            'mae': round(mae, 2),
+            'rmse': round(rmse, 2),
+            'r2': round(r2, 4),
+            'feature_names': feature_cols
+        }
+        with open(os.path.join(base_dir, 'metrics.json'), 'w') as f:
+            json.dump(metrics, f, indent=2)
+            
+        print("Done! Artifacts saved locally AND logged to MLflow.")
 
 if __name__ == '__main__':
     train_and_save()
