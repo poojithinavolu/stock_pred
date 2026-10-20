@@ -1,0 +1,13 @@
+{
+  "mae": 2.91,
+  "rmse": 3.76,
+  "r2": 0.9917,
+  "feature_names": [
+    "Open",
+    "High",
+    "Low",
+    "Volume",
+    "MA_5",
+    "MA_20"
+  ]
+}
